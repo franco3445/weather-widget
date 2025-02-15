@@ -9,17 +9,20 @@ export default function WeatherWidget () {
     const [currentData, setCurrentData] = React.useState({});
     const [hourlyData, setHourlyData] = React.useState([]);
 
+    const celsiusToFahrenheit = ( temp ) => {
+        return ((temp * 9.0 / 5.0) + 32.0);
+    }
+
     const getWeatherData = React.useCallback(async () => {
-        console.log('Getting WeatherData');
+        console.log('Getting WeatherData...');
         const params = {
             "latitude": 30,
             "longitude": -90,
             "current": ["temperature_2m", "wind_speed_10m"],
-            "hourly": ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
+            "hourly": ["temperature_2m", "wind_speed_10m"]
         };
         const url = "https://api.open-meteo.com/v1/forecast";
         const responses = await fetchWeatherApi(url, params);
-
 
         const range = (start: number, stop: number, step: number) =>
             Array.from({ length: (stop - start) / step }, (_, i) => start + i * step);
@@ -31,19 +34,21 @@ export default function WeatherWidget () {
         const current = response.current()!;
         const hourly = response.hourly()!;
 
+        const hourlyTemps = hourly.variables(0)!.valuesArray()!;
+        const hourlyTempsInFahrenheit = hourlyTemps.map(temp => celsiusToFahrenheit(temp));
+
         const weatherData = {
             current: {
                 time: new Date((Number(current.time()) + utcOffsetSeconds) * 1000),
-                temperature2m: current.variables(0)!.value(),
-                windSpeed10m: current.variables(1)!.value(),
+                temperature: celsiusToFahrenheit(current.variables(0)!.value()),
+                windSpeed: celsiusToFahrenheit(current.variables(1)!.value()),
             },
             hourly: {
                 time: range(Number(hourly.time()), Number(hourly.timeEnd()), hourly.interval()).map(
                     (t) => new Date((t + utcOffsetSeconds) * 1000)
                 ),
-                temperature2m: hourly.variables(0)!.valuesArray()!,
-                relativeHumidity2m: hourly.variables(1)!.valuesArray()!,
-                windSpeed10m: hourly.variables(2)!.valuesArray()!,
+                temperature: hourlyTempsInFahrenheit,
+                windSpeed: hourly.variables(1)!.valuesArray()!,
             },
         };
 
@@ -54,8 +59,8 @@ export default function WeatherWidget () {
         setHourlyData(
             weatherData.hourly.time.map((time, index) => ({
                 time: new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                temperature: weatherData.hourly.temperature2m[index],
-                windSpeed: weatherData.hourly.windSpeed10m[index],
+                temperature: weatherData.hourly.temperature[index],
+                windSpeed: weatherData.hourly.windSpeed[index],
             }))
         );
     },[]);
@@ -74,11 +79,11 @@ export default function WeatherWidget () {
                 <div className="flex justify-between mt-4">
                     <div>
                         <p className="text-sm text-gray-600">Temperature</p>
-                        <p className="text-lg font-semibold">{currentData.temperature2m}°C</p>
+                        <p className="text-lg font-semibold">{currentData.temperature}°F</p>
                     </div>
                     <div>
                         <p className="text-sm text-gray-600">Wind Speed</p>
-                        <p className="text-lg font-semibold">{currentData.windSpeed10m} m/s</p>
+                        <p className="text-lg font-semibold">{currentData.windSpeed} m/s</p>
                     </div>
                 </div>
                 <h3 className="text-md font-semibold mt-6">Hourly Forecast</h3>
