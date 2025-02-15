@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@mui/material";
+import { fetchWeatherApi } from 'openmeteo';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+
+import './index.css';
 
 export default function WeatherWidget () {
     const [currentData, setCurrentData] = React.useState({});
@@ -8,29 +11,51 @@ export default function WeatherWidget () {
 
     const getWeatherData = React.useCallback(async () => {
         console.log('Getting WeatherData');
-
-        const data = {
-            "current": {
-                "time": "2022-01-01T15:00",
-                "temperature_2m": 2.4,
-                "wind_speed_10m": 11.9,
-            },
-            "hourly": {
-                "time": ["2022-07-01T00:00","2022-07-01T01:00"],
-                "wind_speed_10m": [3.16,3.02,3.3,3.14,3.2,2.95],
-                "temperature_2m": [13.7,13.3,12.8,12.3,11.8],
-                "relative_humidity_2m": [82,83,86,85,88,88,84,76],
-            }
+        const params = {
+            "latitude": 30,
+            "longitude": -90,
+            "current": ["temperature_2m", "wind_speed_10m"],
+            "hourly": ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
         };
+        const url = "https://api.open-meteo.com/v1/forecast";
+        const responses = await fetchWeatherApi(url, params);
+
+
+        const range = (start: number, stop: number, step: number) =>
+            Array.from({ length: (stop - start) / step }, (_, i) => start + i * step);
+
+        const response = responses[0];
+
+        const utcOffsetSeconds = response.utcOffsetSeconds();
+
+        const current = response.current()!;
+        const hourly = response.hourly()!;
+
+        const weatherData = {
+            current: {
+                time: new Date((Number(current.time()) + utcOffsetSeconds) * 1000),
+                temperature2m: current.variables(0)!.value(),
+                windSpeed10m: current.variables(1)!.value(),
+            },
+            hourly: {
+                time: range(Number(hourly.time()), Number(hourly.timeEnd()), hourly.interval()).map(
+                    (t) => new Date((t + utcOffsetSeconds) * 1000)
+                ),
+                temperature2m: hourly.variables(0)!.valuesArray()!,
+                relativeHumidity2m: hourly.variables(1)!.valuesArray()!,
+                windSpeed10m: hourly.variables(2)!.valuesArray()!,
+            },
+        };
+
         setCurrentData(
-            data.current
+            weatherData.current
         )
 
         setHourlyData(
-            data.hourly.time.map((time, index) => ({
+            weatherData.hourly.time.map((time, index) => ({
                 time: new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                temperature: data.hourly.temperature_2m[index],
-                windSpeed: data.hourly.wind_speed_10m[index],
+                temperature: weatherData.hourly.temperature2m[index],
+                windSpeed: weatherData.hourly.windSpeed10m[index],
             }))
         );
     },[]);
@@ -48,12 +73,12 @@ export default function WeatherWidget () {
                 <p className="text-center text-lg">{new Date(currentData.time).toLocaleString()}</p>
                 <div className="flex justify-between mt-4">
                     <div>
-                        <p className="text-lg font-semibold">{currentData.temperature_2m}°C</p>
                         <p className="text-sm text-gray-600">Temperature</p>
+                        <p className="text-lg font-semibold">{currentData.temperature2m}°C</p>
                     </div>
                     <div>
-                        <p className="text-lg font-semibold">{currentData.wind_speed_10m} m/s</p>
                         <p className="text-sm text-gray-600">Wind Speed</p>
+                        <p className="text-lg font-semibold">{currentData.windSpeed10m} m/s</p>
                     </div>
                 </div>
                 <h3 className="text-md font-semibold mt-6">Hourly Forecast</h3>
